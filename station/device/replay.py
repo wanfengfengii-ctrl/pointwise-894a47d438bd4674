@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from station.device.operations import RepairOutcome, RepairState, issue_in_transaction, query_repair
 from station.device.recording import RecordingEvent
 from station.device.repository import DeviceRepository
-from station.device.slots import SlotImage, cover_position, place_packet
+from station.device.slots import SlotImage, cover_position, place_packet, read_position
 
 
 @dataclass(frozen=True)
@@ -34,26 +34,32 @@ class PollResult:
     image: SlotImage | None = None
     covered_sequence: int | None = None
     repair: RepairOutcome | None = None
+    boot: str | None = None
 
 
 def _apply_event(repository: DeviceRepository, event: RecordingEvent) -> PollResult:
+    if event.kind == 'boot':
+        repository.begin_boot(event.boot)
+        return PollResult(event, boot=event.boot)
     if event.kind == 'record':
-        image = SlotImage(repository.device, event.sequence, event.slot, event.payload)
+        boot = repository.current_boot()
+        image = SlotImage(repository.device, event.sequence, event.slot, event.payload, boot)
         covered = place_packet(repository, image)
-        return PollResult(event, image=image, covered_sequence=covered)
+        image = read_position(repository, (boot, event.sequence))
+        return PollResult(event, image=image, covered_sequence=covered, boot=boot)
     if event.kind == 'cover':
-        covered = cover_position(repository, event.slot, event.sequence)
+        covered = cover_position(repository, event.slot, event.sequence, event.boot)
         return PollResult(event, covered_sequence=covered)
     if event.kind == 'issue':
         outcome = issue_in_transaction(repository, event.operation)
         if outcome.state is RepairState.UNKNOWN:
             raise ValueError('issue event refers to an unaccepted operation')
-        return PollResult(event, repair=outcome)
+        return PollResult(event, repair=outcome, boot=outcome.boot or None)
     if event.kind == 'reply':
         outcome = query_repair(repository, event.operation)
         if outcome.state is not RepairState.ISSUED:
             raise ValueError('reply event requires an issued original')
-        return PollResult(event, image=outcome.image, repair=outcome)
+        return PollResult(event, image=outcome.image, repair=outcome, boot=outcome.boot or None)
     raise ValueError(f'invalid event kind {event.kind!r}')
 
 

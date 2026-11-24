@@ -2,6 +2,12 @@ from station.device.operations import RepairOutcome as RepairOutcome
 from station.device.operations import issue_repair as issue_repair
 from station.device.operations import query_repair as query_repair
 from station.device.recording import parse_recording as parse_recording
+from station.device.replay import PollResult as PollResult
 from station.device.replay import ReplaySession as ReplaySession
 from station.device.replay import poll as poll
 from station.device.repository import DeviceRepository as DeviceRepository
+from station.device.slots import PositionAvailability as PositionAvailability
+from station.device.slots import SlotImage as SlotImage
+from station.device.slots import position_availability as position_availability
+from station.device.slots import read_origin as read_origin
+from station.device.slots import read_position as read_position

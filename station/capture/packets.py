@@ -18,6 +18,7 @@ class OriginalPacket:
     slot: int
     micrometers: int
     raw: bytes
+    boot: str = ''
 
 
 def _validate_fields(device, sequence, slot, micrometers) -> None:
@@ -53,5 +54,7 @@ def validate_origin(packet: OriginalPacket, image: SlotImage) -> None:
     require_name(image.device, 'origin device')
     require_integer(image.sequence, 'origin sequence')
     require_integer(image.slot, 'origin slot')
+    if image.boot:
+        require_name(image.boot, 'origin boot')
     if (packet.device, packet.sequence, packet.slot) != (image.device, image.sequence, image.slot):
         raise ValueError('packet position does not match delivery origin')

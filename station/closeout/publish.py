@@ -15,7 +15,7 @@ from station.shift.roster import lookup_shift
 
 @dataclass(frozen=True)
 class CloseResult:
-    pending: tuple[int, ...] = ()
+    pending: tuple[object, ...] = ()
     publication: Publication | None = None
 
     @property
@@ -33,7 +33,7 @@ def close_shift(database, shift_id: str, *, source: DeviceRepository | None = No
             return CloseResult(publication=previous)
 
         outcomes = resolve_coverage(database, shift, source)
-        pending = tuple(position.sequence for position in outcomes if position.state == 'waiting')
+        pending = tuple(position.position for position in outcomes if position.state == 'waiting')
         if pending:
             return CloseResult(pending=pending)
 

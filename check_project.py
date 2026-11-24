@@ -1,9 +1,24 @@
-"""Run this project's full unittest suite from the repository root."""
+"""Run the recorder fixture self-check and this project's full unittest suite."""
+import io
 import sys
 import unittest
+from contextlib import redirect_stdout
 
 
 def main():
+    # 1. The documented restart recordings must keep their exact source bytes,
+    #    order, and reused slot; a drift here invalidates the whole business case.
+    import restart_fixture
+
+    try:
+        with redirect_stdout(io.StringIO()):
+            restart_fixture.main()
+    except AssertionError as error:
+        print(f'FIXTURE FAIL {error}', file=sys.stderr)
+        return 1
+    print('FIXTURE OK restart recordings, reused slot, and late reply intact')
+
+    # 2. Original README regressions plus the restart business regressions.
     suite = unittest.defaultTestLoader.discover('tests', top_level_dir='.')
     if suite.countTestCases():
         result = unittest.TextTestRunner(verbosity=2).run(suite)

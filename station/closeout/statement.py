@@ -40,13 +40,41 @@ def assemble_statement(
     return Publication(statement, FirstReceipt(result_id, f'first/{result_id}'))
 
 
+def _encode_position(key: tuple[str, int]) -> object:
+    return key[1] if key[0] == '' else [key[0], key[1]]
+
+
+def _decode_position(key: object) -> tuple[str, int]:
+    if isinstance(key, list):
+        return key[0], key[1]
+    return '', key
+
+
 def encode_statement(statement: Statement) -> str:
     document = asdict(statement)
-    for position in document['positions']:
-        receipt = position['receipt']
-        if receipt is not None:
-            packet = receipt['packet']
-            packet['raw'] = packet['raw'].hex()
+    document['positions'] = [
+        {
+            'boot': position.boot,
+            'sequence': position.sequence,
+            'state': position.state,
+            'receipt': None if position.receipt is None else {
+                'receipt_id': position.receipt.receipt_id,
+                'operation': position.receipt.operation,
+                'boot': position.receipt.boot,
+                'packet': {
+                    'device': position.receipt.packet.device,
+                    'sequence': position.receipt.packet.sequence,
+                    'slot': position.receipt.packet.slot,
+                    'micrometers': position.receipt.packet.micrometers,
+                    'raw': position.receipt.packet.raw.hex(),
+                },
+            },
+        }
+        for position in statement.positions
+    ]
+    document['stats']['missing'] = [
+        _encode_position(_decode_position(key)) for key in statement.stats.missing
+    ]
     return json.dumps(document, separators=(',', ':'), sort_keys=True)
 
 
@@ -59,10 +87,17 @@ def decode_statement(text: str) -> Statement:
         if stored is not None:
             fields = stored['packet']
             fields['raw'] = bytes.fromhex(fields['raw'])
+            fields['boot'] = stored.get('boot', fields.get('boot', ''))
             receipt = Receipt(stored['receipt_id'], OriginalPacket(**fields), stored['operation'])
-        positions.append(PositionOutcome(row['sequence'], row['state'], receipt))
+        positions.append(PositionOutcome(row.get('boot', ''), row['sequence'], row['state'], receipt))
     stats = document['stats']
-    stats['missing'] = tuple(stats['missing'])
-    return Statement(
-        document['result_id'], ShiftRecord(**document['shift']), tuple(positions), MeasurementStats(**stats),
+    stats['missing'] = tuple(
+        sequence if boot == '' else (boot, sequence)
+        for boot, sequence in (_decode_position(key) for key in stats['missing'])
     )
+    shift_data = dict(document['shift'])
+    segments = shift_data.get('segments')
+    if segments is not None and not isinstance(segments, tuple):
+        shift_data['segments'] = tuple(tuple(segment) for segment in segments)
+    shift = ShiftRecord(**shift_data)
+    return Statement(document['result_id'], shift, tuple(positions), MeasurementStats(**stats))

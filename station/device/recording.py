@@ -15,25 +15,33 @@ class RecordingEvent:
     sequence: int | None = None
     payload: bytes | None = None
     operation: str | None = None
+    boot: str | None = None
 
     def fingerprint_material(self) -> bytes:
         payload = None if self.payload is None else self.payload.hex()
-        return json.dumps(
-            [self.kind, self.slot, self.sequence, payload, self.operation],
-            separators=(',', ':'),
-        ).encode('ascii')
+        material = [self.kind, self.slot, self.sequence, payload, self.operation]
+        # Legacy recordings have no boot field; keeping five elements means an
+        # existing committed cursor still matches after upgrading the code.
+        if self.boot is not None:
+            material.append(self.boot)
+        return json.dumps(material, separators=(',', ':')).encode('ascii')
 
 
 def _parse_event(event: object) -> RecordingEvent:
     if not isinstance(event, dict):
         raise ValueError('event must be an object')
     kind = event.get('kind')
+    if kind == 'boot' and event.keys() == {'kind', 'boot'}:
+        return RecordingEvent('boot', boot=require_name(event['boot'], 'boot'))
     if kind in ('issue', 'reply') and event.keys() == {'kind', 'operation'}:
         return RecordingEvent(kind, operation=require_name(event['operation'], 'operation'))
 
     fields = {'kind', 'slot', 'sequence'}
     if kind == 'record':
         fields.add('payload')
+    boot = None
+    if kind == 'cover' and 'boot' in event:
+        fields.add('boot')
     if kind not in ('record', 'cover') or event.keys() != fields:
         raise ValueError('invalid event kind or fields')
     slot = require_integer(event['slot'], 'slot')
@@ -43,7 +51,9 @@ def _parse_event(event: object) -> RecordingEvent:
         if not isinstance(event['payload'], str):
             raise ValueError('payload must be hexadecimal text')
         payload = bytes.fromhex(event['payload'])
-    return RecordingEvent(kind, slot, sequence, payload)
+    elif 'boot' in event:
+        boot = require_name(event['boot'], 'boot')
+    return RecordingEvent(kind, slot, sequence, payload, boot=boot)
 
 
 def parse_recording(text: str) -> tuple[RecordingEvent, ...]:
